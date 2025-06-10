@@ -325,16 +325,33 @@
                 .forEach(file => {
                     const dateStr = file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : '';
                     let linkStr = 'no link';
+                    let downloadUrl = '#';
+                    
                     if (file.link) {
-                        const displayLink = file.link.length > 15 ? file.link.slice(0, 15) + '...' : file.link;
-                        linkStr = `<a href="${file.link}" target="_blank">${displayLink}</a>`;
+                        try {
+                            // Try to parse as JSON first
+                            const linkData = JSON.parse(file.link);
+                            if (linkData.fileurl) {
+                                downloadUrl = linkData.fileurl;
+                            }
+                        } catch (e) {
+                            // If parsing fails, assume it's a direct URL
+                            downloadUrl = file.link;
+                        }
+                        
+                        // Create display link
+                        if (downloadUrl !== '#') {
+                            const displayLink = downloadUrl.length > 15 ? downloadUrl.slice(0, 15) + '...' : downloadUrl;
+                            linkStr = `<a href="${downloadUrl}" target="_blank">${displayLink}</a>`;
+                        }
                     }
+                    
                     const li = document.createElement('li');
                     li.innerHTML = `
                         <span class="file-info">${file.name}</span>
                         <span class="file-actions">
                             <span style="min-width:120px;font-size:0.97em;color:#888;display:inline-block;">&nbsp; ${linkStr} &nbsp;|&nbsp; ${dateStr}</span>
-                            <a href="${file.link || '#'}" target="_blank"><button class="download-btn">Download</button></a>
+                            <a href="${downloadUrl}" target="_blank"><button class="download-btn">Download</button></a>
                             <button class="delete-btn" data-filename="${file.name}">Delete</button>
                         </span>
                     `;
@@ -368,13 +385,16 @@
             const formData = new FormData();
             formData.append('name', name);
             formData.append('file', file);
+            console.log('Data sent to external server:', { name, file: file.name });
+            showNotification('File sent to external server');
             const extResp = await fetch('https://husknigerianotificationserviceqa-fxbeakdecehtetcz.southafricanorth-01.azurewebsites.net/send-bulk-sms', { method: 'POST', body: formData });
             const extRespClone = extResp.clone();
             const rawText = await extRespClone.text();
             console.log('Raw response from external server:', rawText);
             if (!extResp.ok) return alert('Error processing file on external server.');
             showNotification('Response received from external server');
-            const link = rawText.trim();
+            const extRespJson = JSON.parse(rawText);
+            const link = extRespJson.fileurl;
             const dotIdx = file.name.lastIndexOf('.');
             const processedName = dotIdx !== -1 ? file.name.slice(0, dotIdx) + '_processed' + file.name.slice(dotIdx) : file.name + '_processed';
             const backendResp = await fetch('/upload', {
@@ -386,7 +406,7 @@
                 document.getElementById('fileInput').value = '';
                 document.getElementById('nameInput').value = '';
                 loadFiles();
-                showNotification('Link saved to dashboard');
+                showNotification('File saved to dashboard');
             } else alert('Error saving processed file link to dashboard.');
         };
 
